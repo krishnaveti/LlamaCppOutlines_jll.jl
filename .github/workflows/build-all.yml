@@ -111,8 +111,10 @@ jobs:
           cd "$GITHUB_WORKSPACE/stage/${TRIPLET}"
           tar -czf "$GITHUB_WORKSPACE/${TRIPLET}-cuda.tar.gz" .
       - uses: actions/upload-artifact@v4
-        with: { name: ${{ env.TRIPLET }}-cuda, path: ${{ env.TRIPLET }}-cuda.tar.gz }
-
+        with:
+          name: ${{ env.TRIPLET }}-cuda
+          path: ${{ env.TRIPLET }}-cuda.tar.gz
+          
   linux-arm64-cpu:
     runs-on: ubuntu-22.04-arm64
     env: { TRIPLET: aarch64-linux-gnu }
@@ -152,7 +154,9 @@ jobs:
           cd "$GITHUB_WORKSPACE/stage/${TRIPLET}"
           tar -czf "$GITHUB_WORKSPACE/${TRIPLET}-cpu.tar.gz" .
       - uses: actions/upload-artifact@v4
-        with: { name: ${{ env.TRIPLET }}-cpu, path: ${{ env.TRIPLET }}-cpu.tar.gz }
+        with: 
+        name: ${{ env.TRIPLET }}-cpu 
+        path: ${{ env.TRIPLET }}-cpu.tar.gz }
 
   mac-metal:
     strategy:
@@ -162,7 +166,8 @@ jobs:
           - { os: macos-13, triplet: x86_64-apple-darwin }
           - { os: macos-14, triplet: aarch64-apple-darwin }
     runs-on: ${{ matrix.os }}
-    env: { TRIPLET: ${{ matrix.triplet }} }
+    env: 
+      TRIPLET: ${{ matrix.triplet }}
     steps:
       - uses: actions/checkout@v4
       - name: Fetch vendors
@@ -214,7 +219,9 @@ jobs:
           cd "$GITHUB_WORKSPACE/stage/${TRIPLET}"
           tar -czf "$GITHUB_WORKSPACE/${TRIPLET}-metal.tar.gz" .
       - uses: actions/upload-artifact@v4
-        with: { name: ${{ env.TRIPLET }}-metal, path: ${{ env.TRIPLET }}-metal.tar.gz }
+        with: 
+        name: ${{ env.TRIPLET }}-metal
+        path: ${{ env.TRIPLET }}-metal.tar.gz }
 
   windows:
     runs-on: windows-2022

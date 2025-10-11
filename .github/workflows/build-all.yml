@@ -270,6 +270,5 @@ jobs:
             -DestinationPath "$env:GITHUB_WORKSPACE\${{ env.TRIPLET }}-${{ matrix.backend }}.zip"
       - uses: actions/upload-artifact@v4
         with: 
-        name: ${{ env.TRIPLET }}-${{ matrix.backend }}
-        path: ${{ env.TRIPLET }}-${{ matrix.backend }}.zip
-YAML 
+          name: ${{ env.TRIPLET }}-${{ matrix.backend }}
+          path: ${{ env.TRIPLET }}-${{ matrix.backend }}.zip

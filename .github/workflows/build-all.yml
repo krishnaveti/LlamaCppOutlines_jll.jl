@@ -3,22 +3,32 @@ name: Build CPU & GPU Artifacts (Linux/macOS/Windows)
 on:
   workflow_dispatch:
     inputs:
-      LLAMA_REPO:   { description: "llama.cpp repo",   default: "https://github.com/ggml-org/llama.cpp.git", required: true }
-      LLAMA_REF:    { description: "llama.cpp ref",    default: "b6729", required: true }
-      OUTLINES_REPO: { description: "outlines-core repo", default: "https://github.com/dottxt-ai/outlines-core.git", required: true }
-      OUTLINES_REF: { description: "outlines-core ref",  default: "main", required: true }
+      LLAMA_REPO:
+        description: "llama.cpp repo"
+        default: "https://github.com/ggml-org/llama.cpp.git"
+        required: true
+      LLAMA_REF:
+        description: "llama.cpp ref"
+        default: "b6729"
+        required: true
+      OUTLINES_REPO:
+        description: "outlines-core repo"
+        default: "https://github.com/dottxt-ai/outlines-core.git"
+        required: true
+      OUTLINES_REF:
+        description: "outlines-core ref"
+        default: "main"
+        required: true
 
-permissions: { contents: read }
+permissions:
+  contents: read
 
 env:
-  # if you want to change these defaults permanently, edit here too
-  LLAMA_REPO:   ${{ inputs.LLAMA_REPO }}
-  LLAMA_REF:    ${{ inputs.LLAMA_REF }}
+  LLAMA_REPO: ${{ inputs.LLAMA_REPO }}
+  LLAMA_REF: ${{ inputs.LLAMA_REF }}
   OUTLINES_REPO: ${{ inputs.OUTLINES_REPO }}
   OUTLINES_REF: ${{ inputs.OUTLINES_REF }}
 
-# Reusable steps to fetch vendors into ./vendors without committing them
-# (each job calls this)
 defaults:
   run:
     shell: bash
@@ -26,14 +36,15 @@ defaults:
 jobs:
   linux-x64-cpu:
     runs-on: ubuntu-22.04
-    env: { TRIPLET: x86_64-linux-gnu }
+    env:
+      TRIPLET: x86_64-linux-gnu
     steps:
       - uses: actions/checkout@v4
       - name: Fetch vendors (no repo changes)
         run: |
           set -eux
           rm -rf vendors && mkdir -p vendors
-          git clone --depth 1 --branch "$LLAMA_REF"   "$LLAMA_REPO"    vendors/llama.cpp
+          git clone --depth 1 --branch "$LLAMA_REF"    "$LLAMA_REPO"    vendors/llama.cpp
           git clone --depth 1 --branch "$OUTLINES_REF" "$OUTLINES_REPO" vendors/outlines-core
       - name: deps
         run: |
@@ -45,8 +56,8 @@ jobs:
         working-directory: vendors/outlines-core
         run: |
           cargo build --release --locked
-          mkdir -p $GITHUB_WORKSPACE/stage/${TRIPLET}/lib
-          cp target/release/liboutlines_core.so $GITHUB_WORKSPACE/stage/${TRIPLET}/lib/
+          mkdir -p "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib"
+          cp target/release/liboutlines_core.so "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib/"
       - name: Build llama.cpp (CPU)
         working-directory: vendors/llama.cpp
         run: |
@@ -66,18 +77,22 @@ jobs:
         with:
           name: ${{ env.TRIPLET }}-cpu
           path: ${{ env.TRIPLET }}-cpu.tar.gz
-          
+
   linux-x64-cuda:
     runs-on: ubuntu-22.04
-    container: { image: nvidia/cuda:12.4.1-devel-ubuntu22.04, options: --user 0:0 }
-    env: { TRIPLET: x86_64-linux-gnu, CMAKE_CUDA_ARCHS: 70;75;80;86;89;90 }
+    container:
+      image: nvidia/cuda:12.4.1-devel-ubuntu22.04
+      options: --user 0:0
+    env:
+      TRIPLET: x86_64-linux-gnu
+      CMAKE_CUDA_ARCHS: "70;75;80;86;89;90"
     steps:
       - uses: actions/checkout@v4
       - name: Fetch vendors
         run: |
           set -eux
           rm -rf vendors && mkdir -p vendors
-          git clone --depth 1 --branch "$LLAMA_REF"   "$LLAMA_REPO"    vendors/llama.cpp
+          git clone --depth 1 --branch "$LLAMA_REF"    "$LLAMA_REPO"    vendors/llama.cpp
           git clone --depth 1 --branch "$OUTLINES_REF" "$OUTLINES_REPO" vendors/outlines-core
       - name: deps
         run: |
@@ -93,8 +108,8 @@ jobs:
         run: |
           source $HOME/.cargo/env
           cargo build --release --locked
-          mkdir -p $GITHUB_WORKSPACE/stage/${TRIPLET}/lib
-          cp target/release/liboutlines_core.so $GITHUB_WORKSPACE/stage/${TRIPLET}/lib/
+          mkdir -p "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib"
+          cp target/release/liboutlines_core.so "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib/"
       - name: Build llama.cpp (CUDA)
         working-directory: vendors/llama.cpp
         run: |
@@ -114,17 +129,18 @@ jobs:
         with:
           name: ${{ env.TRIPLET }}-cuda
           path: ${{ env.TRIPLET }}-cuda.tar.gz
-          
+
   linux-arm64-cpu:
     runs-on: ubuntu-22.04-arm64
-    env: { TRIPLET: aarch64-linux-gnu }
+    env:
+      TRIPLET: aarch64-linux-gnu
     steps:
       - uses: actions/checkout@v4
       - name: Fetch vendors
         run: |
           set -eux
           rm -rf vendors && mkdir -p vendors
-          git clone --depth 1 --branch "$LLAMA_REF"   "$LLAMA_REPO"    vendors/llama.cpp
+          git clone --depth 1 --branch "$LLAMA_REF"    "$LLAMA_REPO"    vendors/llama.cpp
           git clone --depth 1 --branch "$OUTLINES_REF" "$OUTLINES_REPO" vendors/outlines-core
       - name: deps
         run: |
@@ -136,8 +152,8 @@ jobs:
         working-directory: vendors/outlines-core
         run: |
           cargo build --release --locked
-          mkdir -p $GITHUB_WORKSPACE/stage/${TRIPLET}/lib
-          cp target/release/liboutlines_core.so $GITHUB_WORKSPACE/stage/${TRIPLET}/lib/
+          mkdir -p "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib"
+          cp target/release/liboutlines_core.so "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib/"
       - name: Build llama.cpp (CPU)
         working-directory: vendors/llama.cpp
         run: |
@@ -154,19 +170,21 @@ jobs:
           cd "$GITHUB_WORKSPACE/stage/${TRIPLET}"
           tar -czf "$GITHUB_WORKSPACE/${TRIPLET}-cpu.tar.gz" .
       - uses: actions/upload-artifact@v4
-        with: 
-        name: ${{ env.TRIPLET }}-cpu 
-        path: ${{ env.TRIPLET }}-cpu.tar.gz }
+        with:
+          name: ${{ env.TRIPLET }}-cpu
+          path: ${{ env.TRIPLET }}-cpu.tar.gz
 
   mac-metal:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-13, triplet: x86_64-apple-darwin }
-          - { os: macos-14, triplet: aarch64-apple-darwin }
+          - os: macos-13
+            triplet: x86_64-apple-darwin
+          - os: macos-14
+            triplet: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
-    env: 
+    env:
       TRIPLET: ${{ matrix.triplet }}
     steps:
       - uses: actions/checkout@v4
@@ -174,7 +192,7 @@ jobs:
         run: |
           set -eux
           rm -rf vendors && mkdir -p vendors
-          git clone --depth 1 --branch "$LLAMA_REF"   "$LLAMA_REPO"    vendors/llama.cpp
+          git clone --depth 1 --branch "$LLAMA_REF"    "$LLAMA_REPO"    vendors/llama.cpp
           git clone --depth 1 --branch "$OUTLINES_REF" "$OUTLINES_REPO" vendors/outlines-core
       - name: deps
         run: |
@@ -194,9 +212,9 @@ jobs:
         run: |
           source $HOME/.cargo/env
           RTGT=$([[ "${TRIPLET}" == "x86_64-apple-darwin" ]] && echo x86_64-apple-darwin || echo aarch64-apple-darwin)
-          cargo build --release --locked --target=${RTGT}
-          mkdir -p $GITHUB_WORKSPACE/stage/${TRIPLET}/lib
-          cp target/${RTGT}/release/liboutlines_core.dylib $GITHUB_WORKSPACE/stage/${TRIPLET}/lib/
+          cargo build --release --locked --target="${RTGT}"
+          mkdir -p "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib"
+          cp "target/${RTGT}/release/liboutlines_core.dylib" "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib/"
       - name: Build llama.cpp (Metal)
         working-directory: vendors/llama.cpp
         run: |
@@ -219,31 +237,38 @@ jobs:
           cd "$GITHUB_WORKSPACE/stage/${TRIPLET}"
           tar -czf "$GITHUB_WORKSPACE/${TRIPLET}-metal.tar.gz" .
       - uses: actions/upload-artifact@v4
-        with: 
-        name: ${{ env.TRIPLET }}-metal
-        path: ${{ env.TRIPLET }}-metal.tar.gz }
+        with:
+          name: ${{ env.TRIPLET }}-metal
+          path: ${{ env.TRIPLET }}-metal.tar.gz
 
   windows:
     runs-on: windows-2022
-    strategy: { fail-fast: false, matrix: { backend: [cpu, cuda] } }
-    env: { TRIPLET: x86_64-w64-mingw32, BUILD_TYPE: Release }
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [cpu, cuda]
+    env:
+      TRIPLET: x86_64-w64-mingw32
+      BUILD_TYPE: Release
     steps:
       - uses: actions/checkout@v4
       - name: Fetch vendors
         shell: pwsh
         run: |
           if (Test-Path vendors) { Remove-Item -Recurse -Force vendors }
-          git clone --depth 1 --branch "${{ env.LLAMA_REF }}"   "${{ env.LLAMA_REPO }}"    vendors/llama.cpp
+          git clone --depth 1 --branch "${{ env.LLAMA_REF }}"    "${{ env.LLAMA_REPO }}"    vendors/llama.cpp
           git clone --depth 1 --branch "${{ env.OUTLINES_REF }}" "${{ env.OUTLINES_REPO }}" vendors/outlines-core
       - name: Setup CUDA (CUDA job only)
         if: matrix.backend == 'cuda'
         uses: Jimver/cuda-toolkit@v0.2.18
-        with: { cuda: '12.4.1' }
+        with:
+          cuda: '12.4.1'
       - name: MSVC env + CMake + Ninja
         uses: ilammy/msvc-dev-cmd@v1
       - name: Rust (MSVC)
         uses: dtolnay/rust-toolchain@stable
-        with: { targets: x86_64-pc-windows-msvc }
+        with:
+          targets: x86_64-pc-windows-msvc
       - name: Build outlines-core (dll)
         shell: pwsh
         working-directory: vendors/outlines-core
@@ -269,6 +294,6 @@ jobs:
           Compress-Archive -Path "$env:GITHUB_WORKSPACE\stage\${{ env.TRIPLET }}\*" `
             -DestinationPath "$env:GITHUB_WORKSPACE\${{ env.TRIPLET }}-${{ matrix.backend }}.zip"
       - uses: actions/upload-artifact@v4
-        with: 
+        with:
           name: ${{ env.TRIPLET }}-${{ matrix.backend }}
           path: ${{ env.TRIPLET }}-${{ matrix.backend }}.zip

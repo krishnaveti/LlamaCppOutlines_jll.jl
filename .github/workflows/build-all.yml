@@ -1,4 +1,3 @@
-cat > .github/workflows/build-all.yml <<'YAML'
 name: Build CPU & GPU Artifacts (Linux/macOS/Windows)
 
 on:

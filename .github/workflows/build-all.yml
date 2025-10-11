@@ -1,168 +1,175 @@
+cat > .github/workflows/build-all.yml <<'YAML'
 name: Build CPU & GPU Artifacts (Linux/macOS/Windows)
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      LLAMA_REPO:   { description: "llama.cpp repo",   default: "https://github.com/ggml-org/llama.cpp.git", required: true }
+      LLAMA_REF:    { description: "llama.cpp ref",    default: "b6729", required: true }
+      OUTLINES_REPO:{ description: "outlines-core repo", default: "https://github.com/krishnaveti/outlines-core.git", required: true }
+      OUTLINES_REF: { description: "outlines-core ref",  default: "main", required: true }
 
-permissions:
-  contents: read
+permissions: { contents: read }
+
+env:
+  # if you want to change these defaults permanently, edit here too
+  LLAMA_REPO:   ${{ inputs.LLAMA_REPO }}
+  LLAMA_REF:    ${{ inputs.LLAMA_REF }}
+  OUTLINES_REPO:${{ inputs.OUTLINES_REPO }}
+  OUTLINES_REF: ${{ inputs.OUTLINES_REF }}
+
+# Reusable steps to fetch vendors into ./vendors without committing them
+# (each job calls this)
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  # --------------------------
-  # Linux x86_64 (CPU)
-  # --------------------------
   linux-x64-cpu:
     runs-on: ubuntu-22.04
-    env:
-      TRIPLET: x86_64-linux-gnu
+    env: { TRIPLET: x86_64-linux-gnu }
     steps:
       - uses: actions/checkout@v4
+      - name: Fetch vendors (no repo changes)
+        run: |
+          set -eux
+          rm -rf vendors && mkdir -p vendors
+          git clone --depth 1 --branch "$LLAMA_REF"   "$LLAMA_REPO"    vendors/llama.cpp
+          git clone --depth 1 --branch "$OUTLINES_REF" "$OUTLINES_REPO" vendors/outlines-core
       - name: deps
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build build-essential pkg-config curl patchelf
-      - name: Rust (host)
+      - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with: { components: "", targets: "" }
-
-      # outlines-core (Rust cdylib)
-      - name: build outlines-core
+      - name: Build outlines-core (cdylib)
         working-directory: vendors/outlines-core
         run: |
           cargo build --release --locked
           mkdir -p $GITHUB_WORKSPACE/stage/${TRIPLET}/lib
           cp target/release/liboutlines_core.so $GITHUB_WORKSPACE/stage/${TRIPLET}/lib/
-
-      # llama.cpp (CPU shared lib + tools)
-      - name: build llama.cpp (CPU)
+      - name: Build llama.cpp (CPU)
         working-directory: vendors/llama.cpp
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=ON \
-            -DLLAMA_BUILD_SHARED_LIB=ON \
-            -DLLAMA_BUILD_TESTS=OFF \
-            -DLLAMA_BUILD_SERVER=ON \
+            -DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_SHARED_LIB=ON \
+            -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=ON \
             -DGGML_CUDA=OFF -DGGML_METAL=OFF -DGGML_VULKAN=OFF -DGGML_SYCL=OFF \
             -DGGML_NATIVE=OFF
           cmake --build build --parallel
           cmake --install build --prefix "$GITHUB_WORKSPACE/stage/${TRIPLET}"
-
-      - name: pack
+      - name: Pack
         run: |
           cd "$GITHUB_WORKSPACE/stage/${TRIPLET}"
           tar -czf "$GITHUB_WORKSPACE/${TRIPLET}-cpu.tar.gz" .
       - uses: actions/upload-artifact@v4
         with: { name: ${{ env.TRIPLET }}-cpu, path: ${{ env.TRIPLET }}-cpu.tar.gz }
 
-  # --------------------------
-  # Linux x86_64 (CUDA)
-  # --------------------------
   linux-x64-cuda:
     runs-on: ubuntu-22.04
-    container:
-      image: nvidia/cuda:12.4.1-devel-ubuntu22.04
-      options: --user 0:0
-    env:
-      TRIPLET: x86_64-linux-gnu
-      CMAKE_CUDA_ARCHS: 70;75;80;86;89;90
+    container: { image: nvidia/cuda:12.4.1-devel-ubuntu22.04, options: --user 0:0 }
+    env: { TRIPLET: x86_64-linux-gnu, CMAKE_CUDA_ARCHS: 70;75;80;86;89;90 }
     steps:
       - uses: actions/checkout@v4
+      - name: Fetch vendors
+        run: |
+          set -eux
+          rm -rf vendors && mkdir -p vendors
+          git clone --depth 1 --branch "$LLAMA_REF"   "$LLAMA_REPO"    vendors/llama.cpp
+          git clone --depth 1 --branch "$OUTLINES_REF" "$OUTLINES_REPO" vendors/outlines-core
       - name: deps
         run: |
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             git cmake ninja-build build-essential pkg-config curl patchelf
-      - name: Rust (host)
+      - name: Rust in container
         run: |
           curl -L https://sh.rustup.rs -sSf | sh -s -- -y
           echo 'source $HOME/.cargo/env' >> $GITHUB_ENV
-      - name: build outlines-core
+      - name: Build outlines-core
         working-directory: vendors/outlines-core
-        shell: bash
         run: |
           source $HOME/.cargo/env
           cargo build --release --locked
           mkdir -p $GITHUB_WORKSPACE/stage/${TRIPLET}/lib
           cp target/release/liboutlines_core.so $GITHUB_WORKSPACE/stage/${TRIPLET}/lib/
-      - name: build llama.cpp (CUDA)
+      - name: Build llama.cpp (CUDA)
         working-directory: vendors/llama.cpp
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=ON \
-            -DLLAMA_BUILD_SHARED_LIB=ON \
-            -DLLAMA_BUILD_TESTS=OFF \
-            -DLLAMA_BUILD_SERVER=ON \
-            -DGGML_CUDA=ON \
-            -DGGML_NATIVE=OFF \
+            -DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_SHARED_LIB=ON \
+            -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=ON \
+            -DGGML_CUDA=ON -DGGML_NATIVE=OFF \
             -DCMAKE_CUDA_ARCHITECTURES="${CMAKE_CUDA_ARCHS}"
           cmake --build build --parallel
           cmake --install build --prefix "$GITHUB_WORKSPACE/stage/${TRIPLET}"
-      - name: pack
+      - name: Pack
         run: |
           cd "$GITHUB_WORKSPACE/stage/${TRIPLET}"
           tar -czf "$GITHUB_WORKSPACE/${TRIPLET}-cuda.tar.gz" .
       - uses: actions/upload-artifact@v4
         with: { name: ${{ env.TRIPLET }}-cuda, path: ${{ env.TRIPLET }}-cuda.tar.gz }
 
-  # --------------------------
-  # Linux aarch64 (CPU)  — hosted arm64 runner
-  # --------------------------
   linux-arm64-cpu:
     runs-on: ubuntu-22.04-arm64
-    env:
-      TRIPLET: aarch64-linux-gnu
+    env: { TRIPLET: aarch64-linux-gnu }
     steps:
       - uses: actions/checkout@v4
+      - name: Fetch vendors
+        run: |
+          set -eux
+          rm -rf vendors && mkdir -p vendors
+          git clone --depth 1 --branch "$LLAMA_REF"   "$LLAMA_REPO"    vendors/llama.cpp
+          git clone --depth 1 --branch "$OUTLINES_REF" "$OUTLINES_REPO" vendors/outlines-core
       - name: deps
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build build-essential pkg-config curl patchelf
-      - name: Rust (host)
+      - name: Rust
         uses: dtolnay/rust-toolchain@stable
-      - name: build outlines-core
+      - name: Build outlines-core
         working-directory: vendors/outlines-core
         run: |
           cargo build --release --locked
           mkdir -p $GITHUB_WORKSPACE/stage/${TRIPLET}/lib
           cp target/release/liboutlines_core.so $GITHUB_WORKSPACE/stage/${TRIPLET}/lib/
-      - name: build llama.cpp (CPU)
+      - name: Build llama.cpp (CPU)
         working-directory: vendors/llama.cpp
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=ON \
-            -DLLAMA_BUILD_SHARED_LIB=ON \
-            -DLLAMA_BUILD_TESTS=OFF \
-            -DLLAMA_BUILD_SERVER=ON \
+            -DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_SHARED_LIB=ON \
+            -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=ON \
             -DGGML_CUDA=OFF -DGGML_METAL=OFF -DGGML_VULKAN=OFF -DGGML_SYCL=OFF \
             -DGGML_NATIVE=OFF
           cmake --build build --parallel
           cmake --install build --prefix "$GITHUB_WORKSPACE/stage/${TRIPLET}"
-      - name: pack
+      - name: Pack
         run: |
           cd "$GITHUB_WORKSPACE/stage/${TRIPLET}"
           tar -czf "$GITHUB_WORKSPACE/${TRIPLET}-cpu.tar.gz" .
       - uses: actions/upload-artifact@v4
         with: { name: ${{ env.TRIPLET }}-cpu, path: ${{ env.TRIPLET }}-cpu.tar.gz }
 
-  # --------------------------
-  # macOS (Metal) — x86_64 & arm64
-  # --------------------------
   mac-metal:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-13
-            triplet: x86_64-apple-darwin
-          - os: macos-14
-            triplet: aarch64-apple-darwin
+          - { os: macos-13, triplet: x86_64-apple-darwin }
+          - { os: macos-14, triplet: aarch64-apple-darwin }
     runs-on: ${{ matrix.os }}
-    env:
-      TRIPLET: ${{ matrix.triplet }}
+    env: { TRIPLET: ${{ matrix.triplet }} }
     steps:
       - uses: actions/checkout@v4
+      - name: Fetch vendors
+        run: |
+          set -eux
+          rm -rf vendors && mkdir -p vendors
+          git clone --depth 1 --branch "$LLAMA_REF"   "$LLAMA_REPO"    vendors/llama.cpp
+          git clone --depth 1 --branch "$OUTLINES_REF" "$OUTLINES_REPO" vendors/outlines-core
       - name: deps
         run: |
           brew update
@@ -171,113 +178,88 @@ jobs:
         run: |
           curl -L https://sh.rustup.rs -sSf | sh -s -- -y
           echo 'source $HOME/.cargo/env' >> $GITHUB_ENV
-          if [[ "${{ matrix.triplet }}" == "x86_64-apple-darwin" ]]; then
+          if [[ "${TRIPLET}" == "x86_64-apple-darwin" ]]; then
             $HOME/.cargo/bin/rustup target add x86_64-apple-darwin
           else
             $HOME/.cargo/bin/rustup target add aarch64-apple-darwin
           fi
-      - name: build outlines-core
+      - name: Build outlines-core
         working-directory: vendors/outlines-core
-        shell: bash
         run: |
           source $HOME/.cargo/env
-          if [[ "${{ matrix.triplet }}" == "x86_64-apple-darwin" ]]; then
-            RUST_TARGET=x86_64-apple-darwin
-          else
-            RUST_TARGET=aarch64-apple-darwin
-          fi
-          cargo build --release --locked --target=${RUST_TARGET}
-          mkdir -p $GITHUB_WORKSPACE/stage/${{ matrix.triplet }}/lib
-          cp target/${RUST_TARGET}/release/liboutlines_core.dylib \
-             $GITHUB_WORKSPACE/stage/${{ matrix.triplet }}/lib/
-      - name: build llama.cpp (Metal)
+          RTGT=$([[ "${TRIPLET}" == "x86_64-apple-darwin" ]] && echo x86_64-apple-darwin || echo aarch64-apple-darwin)
+          cargo build --release --locked --target=${RTGT}
+          mkdir -p $GITHUB_WORKSPACE/stage/${TRIPLET}/lib
+          cp target/${RTGT}/release/liboutlines_core.dylib $GITHUB_WORKSPACE/stage/${TRIPLET}/lib/
+      - name: Build llama.cpp (Metal)
         working-directory: vendors/llama.cpp
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=ON \
-            -DLLAMA_BUILD_SHARED_LIB=ON \
-            -DLLAMA_BUILD_TESTS=OFF \
-            -DLLAMA_BUILD_SERVER=ON \
-            -DGGML_METAL=ON \
-            -DGGML_NATIVE=OFF
+            -DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_SHARED_LIB=ON \
+            -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=ON \
+            -DGGML_METAL=ON -DGGML_NATIVE=OFF
           cmake --build build --parallel
-          cmake --install build --prefix "$GITHUB_WORKSPACE/stage/${{ matrix.triplet }}"
-          # bundle default.metallib if present
-          find build -name "default.metallib" -exec mkdir -p "$GITHUB_WORKSPACE/stage/${{ matrix.triplet }}/lib" \; \
-            -exec cp {} "$GITHUB_WORKSPACE/stage/${{ matrix.triplet }}/lib/default.metallib" \; || true
+          cmake --install build --prefix "$GITHUB_WORKSPACE/stage/${TRIPLET}"
+          # include default.metallib if present
+          find build -name "default.metallib" -exec mkdir -p "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib" \; \
+            -exec cp {} "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib/default.metallib" \; || true
       - name: codesign (adhoc)
-        if: runner.os == 'macOS'
         run: |
-          find "$GITHUB_WORKSPACE/stage/${{ matrix.triplet }}" -type f \( -name "*.dylib" -o -perm +111 \) -print0 | \
+          find "$GITHUB_WORKSPACE/stage/${TRIPLET}" -type f \( -name "*.dylib" -o -perm +111 \) -print0 | \
           xargs -0 -I{} codesign --force -s - "{}" || true
-      - name: pack
+      - name: Pack
         run: |
-          cd "$GITHUB_WORKSPACE/stage/${{ matrix.triplet }}"
-          tar -czf "$GITHUB_WORKSPACE/${{ matrix.triplet }}-metal.tar.gz" .
+          cd "$GITHUB_WORKSPACE/stage/${TRIPLET}"
+          tar -czf "$GITHUB_WORKSPACE/${TRIPLET}-metal.tar.gz" .
       - uses: actions/upload-artifact@v4
-        with: { name: ${{ matrix.triplet }}-metal, path: ${{ matrix.triplet }}-metal.tar.gz }
+        with: { name: ${{ env.TRIPLET }}-metal, path: ${{ env.TRIPLET }}-metal.tar.gz }
 
-  # --------------------------
-  # Windows x86_64 (CPU & CUDA)
-  # --------------------------
   windows:
     runs-on: windows-2022
-    strategy:
-      fail-fast: false
-      matrix:
-        backend: [cpu, cuda]
-    env:
-      TRIPLET: x86_64-w64-mingw32
-      BUILD_TYPE: Release
+    strategy: { fail-fast: false, matrix: { backend: [cpu, cuda] } }
+    env: { TRIPLET: x86_64-w64-mingw32, BUILD_TYPE: Release }
     steps:
       - uses: actions/checkout@v4
-
-      # CUDA (only for CUDA job)
-      - name: Setup CUDA Toolkit
+      - name: Fetch vendors
+        shell: pwsh
+        run: |
+          if (Test-Path vendors) { Remove-Item -Recurse -Force vendors }
+          git clone --depth 1 --branch "${{ env.LLAMA_REF }}"   "${{ env.LLAMA_REPO }}"    vendors/llama.cpp
+          git clone --depth 1 --branch "${{ env.OUTLINES_REF }}" "${{ env.OUTLINES_REPO }}" vendors/outlines-core
+      - name: Setup CUDA (CUDA job only)
         if: matrix.backend == 'cuda'
         uses: Jimver/cuda-toolkit@v0.2.18
-        with:
-          cuda: '12.4.1'
-
-      - name: Add msbuild + CMake + Ninja
+        with: { cuda: '12.4.1' }
+      - name: MSVC env + CMake + Ninja
         uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Install Rust (MSVC)
+      - name: Rust (MSVC)
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: build outlines-core (dll)
+        with: { targets: x86_64-pc-windows-msvc }
+      - name: Build outlines-core (dll)
         shell: pwsh
         working-directory: vendors/outlines-core
         run: |
           cargo build --release --locked --target x86_64-pc-windows-msvc
           New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\stage\${{ env.TRIPLET }}\bin" | Out-Null
           Copy-Item "target\x86_64-pc-windows-msvc\release\outlines_core.dll" "$env:GITHUB_WORKSPACE\stage\${{ env.TRIPLET }}\bin\"
-
-      - name: build llama.cpp (${{ matrix.backend }})
+      - name: Build llama.cpp (${{ matrix.backend }})
         shell: pwsh
         working-directory: vendors/llama.cpp
         run: |
           $cudaFlag = if ("${{ matrix.backend }}" -eq "cuda") { "-DGGML_CUDA=ON" } else { "-DGGML_CUDA=OFF" }
           cmake -S . -B build -G "Ninja" `
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
-            -DBUILD_SHARED_LIBS=ON `
-            -DLLAMA_BUILD_SHARED_LIB=ON `
-            -DLLAMA_BUILD_TESTS=OFF `
-            -DLLAMA_BUILD_SERVER=ON `
-            $cudaFlag `
-            -DGGML_NATIVE=OFF
+            -DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_SHARED_LIB=ON `
+            -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=ON `
+            $cudaFlag -DGGML_NATIVE=OFF
           cmake --build build --config ${{ env.BUILD_TYPE }}
           cmake --install build --prefix "$env:GITHUB_WORKSPACE\stage\${{ env.TRIPLET }}"
-
-      - name: pack (zip)
+      - name: Pack
         shell: pwsh
         run: |
           Compress-Archive -Path "$env:GITHUB_WORKSPACE\stage\${{ env.TRIPLET }}\*" `
             -DestinationPath "$env:GITHUB_WORKSPACE\${{ env.TRIPLET }}-${{ matrix.backend }}.zip"
       - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.TRIPLET }}-${{ matrix.backend }}
-          path: ${{ env.TRIPLET }}-${{ matrix.backend }}.zip
+        with: { name: ${{ env.TRIPLET }}-${{ matrix.backend }}, path: ${{ env.TRIPLET }}-${{ matrix.backend }}.zip }
+YAML

@@ -5,7 +5,7 @@ on:
     inputs:
       LLAMA_REPO:   { description: "llama.cpp repo",   default: "https://github.com/ggml-org/llama.cpp.git", required: true }
       LLAMA_REF:    { description: "llama.cpp ref",    default: "b6729", required: true }
-      OUTLINES_REPO:{ description: "outlines-core repo", default: "https://github.com/krishnaveti/outlines-core.git", required: true }
+      OUTLINES_REPO: { description: "outlines-core repo", default: "https://github.com/dottxt-ai/outlines-core.git", required: true }
       OUTLINES_REF: { description: "outlines-core ref",  default: "main", required: true }
 
 permissions: { contents: read }
@@ -14,7 +14,7 @@ env:
   # if you want to change these defaults permanently, edit here too
   LLAMA_REPO:   ${{ inputs.LLAMA_REPO }}
   LLAMA_REF:    ${{ inputs.LLAMA_REF }}
-  OUTLINES_REPO:${{ inputs.OUTLINES_REPO }}
+  OUTLINES_REPO: ${{ inputs.OUTLINES_REPO }}
   OUTLINES_REF: ${{ inputs.OUTLINES_REF }}
 
 # Reusable steps to fetch vendors into ./vendors without committing them
@@ -63,7 +63,7 @@ jobs:
           cd "$GITHUB_WORKSPACE/stage/${TRIPLET}"
           tar -czf "$GITHUB_WORKSPACE/${TRIPLET}-cpu.tar.gz" .
       - uses: actions/upload-artifact@v4
-        with: { name: ${{ env.TRIPLET }}-cpu, path: ${{ env.TRIPLET }}-cpu.tar.gz }
+        with: { name: ${{ env.TRIPLET }}-cuda, path: ${{ env.TRIPLET }}-cuda.tar.gz }
 
   linux-x64-cuda:
     runs-on: ubuntu-22.04

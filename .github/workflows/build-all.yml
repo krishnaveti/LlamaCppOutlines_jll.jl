@@ -52,12 +52,14 @@ jobs:
           sudo apt-get install -y cmake ninja-build build-essential pkg-config curl patchelf
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-      - name: Build outlines-core (cdylib)
+      - name: Build outlines-core
         working-directory: vendors/outlines-core
         run: |
-          cargo build --release --locked
+          source $HOME/.cargo/env
+          cargo build --release --target="${TRIPLET}"
           mkdir -p "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib"
-          cp target/release/liboutlines_core.so "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib/"
+          cp target/${TRIPLET}/release/liboutlines_core.so "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib/" || \
+            cp target/release/liboutlines_core.so "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib/"
       - name: Build llama.cpp (CPU)
         working-directory: vendors/llama.cpp
         run: |
@@ -77,7 +79,7 @@ jobs:
         with:
           name: ${{ env.TRIPLET }}-cpu
           path: ${{ env.TRIPLET }}-cpu.tar.gz
-
+  
   linux-x64-cuda:
     runs-on: ubuntu-22.04
     container:
@@ -85,34 +87,44 @@ jobs:
       options: --user 0:0
     env:
       TRIPLET: x86_64-linux-gnu
-      CMAKE_CUDA_ARCHS: "70;75;80;86;89;90"
+      CMAKE_CUDA_ARCHS: 70;75;80;86;89;90
     steps:
       - uses: actions/checkout@v4
+  
+      # Install build tools *before* cloning vendors (container has no git/sudo)
+      - name: deps
+        run: |
+          set -eux
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            git cmake ninja-build build-essential pkg-config curl patchelf ca-certificates
+  
       - name: Fetch vendors
         run: |
           set -eux
           rm -rf vendors && mkdir -p vendors
           git clone --depth 1 --branch "$LLAMA_REF"    "$LLAMA_REPO"    vendors/llama.cpp
           git clone --depth 1 --branch "$OUTLINES_REF" "$OUTLINES_REPO" vendors/outlines-core
-      - name: deps
+  
+      - name: Install Rust
         run: |
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            git cmake ninja-build build-essential pkg-config curl patchelf
-      - name: Rust in container
-        run: |
+          set -eux
           curl -L https://sh.rustup.rs -sSf | sh -s -- -y
-          echo 'source $HOME/.cargo/env' >> $GITHUB_ENV
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+  
       - name: Build outlines-core
         working-directory: vendors/outlines-core
         run: |
-          source $HOME/.cargo/env
-          cargo build --release --locked
+          set -eux
+          # do NOT use --locked here, allow Cargo to refresh lockfile
+          cargo build --release
           mkdir -p "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib"
           cp target/release/liboutlines_core.so "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib/"
+  
       - name: Build llama.cpp (CUDA)
         working-directory: vendors/llama.cpp
         run: |
+          set -eux
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_SHARED_LIB=ON \
@@ -121,10 +133,13 @@ jobs:
             -DCMAKE_CUDA_ARCHITECTURES="${CMAKE_CUDA_ARCHS}"
           cmake --build build --parallel
           cmake --install build --prefix "$GITHUB_WORKSPACE/stage/${TRIPLET}"
+
       - name: Pack
         run: |
+          set -eux
           cd "$GITHUB_WORKSPACE/stage/${TRIPLET}"
           tar -czf "$GITHUB_WORKSPACE/${TRIPLET}-cuda.tar.gz" .
+  
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.TRIPLET }}-cuda
@@ -136,24 +151,29 @@ jobs:
       TRIPLET: aarch64-linux-gnu
     steps:
       - uses: actions/checkout@v4
+  
+      - name: deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build build-essential pkg-config curl patchelf git
+  
       - name: Fetch vendors
         run: |
           set -eux
           rm -rf vendors && mkdir -p vendors
           git clone --depth 1 --branch "$LLAMA_REF"    "$LLAMA_REPO"    vendors/llama.cpp
           git clone --depth 1 --branch "$OUTLINES_REF" "$OUTLINES_REPO" vendors/outlines-core
-      - name: deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build build-essential pkg-config curl patchelf
+  
       - name: Rust
         uses: dtolnay/rust-toolchain@stable
+  
       - name: Build outlines-core
         working-directory: vendors/outlines-core
         run: |
-          cargo build --release --locked
+          cargo build --release
           mkdir -p "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib"
           cp target/release/liboutlines_core.so "$GITHUB_WORKSPACE/stage/${TRIPLET}/lib/"
+  
       - name: Build llama.cpp (CPU)
         working-directory: vendors/llama.cpp
         run: |
@@ -165,10 +185,12 @@ jobs:
             -DGGML_NATIVE=OFF
           cmake --build build --parallel
           cmake --install build --prefix "$GITHUB_WORKSPACE/stage/${TRIPLET}"
+  
       - name: Pack
         run: |
           cd "$GITHUB_WORKSPACE/stage/${TRIPLET}"
           tar -czf "$GITHUB_WORKSPACE/${TRIPLET}-cpu.tar.gz" .
+  
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.TRIPLET }}-cpu
@@ -201,7 +223,7 @@ jobs:
       - name: Rust
         run: |
           curl -L https://sh.rustup.rs -sSf | sh -s -- -y
-          echo 'source $HOME/.cargo/env' >> $GITHUB_ENV
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
           if [[ "${TRIPLET}" == "x86_64-apple-darwin" ]]; then
             $HOME/.cargo/bin/rustup target add x86_64-apple-darwin
           else
@@ -273,7 +295,7 @@ jobs:
         shell: pwsh
         working-directory: vendors/outlines-core
         run: |
-          cargo build --release --locked --target x86_64-pc-windows-msvc
+          cargo build --release --target x86_64-pc-windows-msvc
           New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\stage\${{ env.TRIPLET }}\bin" | Out-Null
           Copy-Item "target\x86_64-pc-windows-msvc\release\outlines_core.dll" "$env:GITHUB_WORKSPACE\stage\${{ env.TRIPLET }}\bin\"
       - name: Build llama.cpp (${{ matrix.backend }})

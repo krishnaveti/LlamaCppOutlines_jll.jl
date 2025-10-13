@@ -139,6 +139,7 @@ jobs:
         run: |
           set -eux
           # Link against CUDA stubs (no GPU driver in CI)
+          sudo ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
           export LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LD_LIBRARY_PATH:-}
           export CMAKE_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${CMAKE_LIBRARY_PATH:-}
           

@@ -139,9 +139,9 @@ jobs:
         run: |
           set -eux
           # Link against CUDA stubs (no GPU driver in CI)
-          export LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:$LD_LIBRARY_PATH
-          export CMAKE_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:$CMAKE_LIBRARY_PATH
-      
+          export LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LD_LIBRARY_PATH:-}
+          export CMAKE_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${CMAKE_LIBRARY_PATH:-}
+          
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_SHARED_LIB=ON \
@@ -150,7 +150,7 @@ jobs:
             -DCMAKE_CUDA_ARCHITECTURES="${CMAKE_CUDA_ARCHS}" \
             -DCMAKE_EXE_LINKER_FLAGS="-L/usr/local/cuda/lib64/stubs" \
             -DCMAKE_SHARED_LINKER_FLAGS="-L/usr/local/cuda/lib64/stubs"
-      
+          
           cmake --build build --parallel
           cmake --install build --prefix "$GITHUB_WORKSPACE/stage/${TRIPLET}"
 

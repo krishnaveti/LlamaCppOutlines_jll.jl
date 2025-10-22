@@ -273,21 +273,50 @@ jobs:
         with:
           cuda: '12.4.1'
 
-      - name: MSVC env + CMake + Ninja
+      - name: Setup MSVC + CMake + Ninja
         uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Rust (MSVC)
+      - name: Install build tools
+        shell: pwsh
+        run: |
+          choco install cmake ninja git -y
+          cmake --version
+          ninja --version
+          
+      - name: Setup Rust (MSVC)
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Build outlines-core (dll)
+      - name: Verify Rust
+        shell: pwsh
+        run: |
+          rustup show
+          rustc --version
+          cargo --version
+
+      - name: Build outlines-core (DLL)
         shell: pwsh
         working-directory: vendors/outlines-core
         run: |
+          # Clean old builds
+          if (Test-Path target) { Remove-Item -Recurse -Force target }
+
+          # Ensure release build directory exists
           cargo build --release --target x86_64-pc-windows-msvc
-          New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\stage\${{ env.TRIPLET }}\bin" | Out-Null
-          Copy-Item "target\x86_64-pc-windows-msvc\release\outlines_core.dll" "$env:GITHUB_WORKSPACE\stage\${{ env.TRIPLET }}\bin\"
+
+          # Check if DLL exists before copying
+          $dllPath = "target\x86_64-pc-windows-msvc\release\outlines_core.dll"
+          if (-Not (Test-Path $dllPath)) {
+            Write-Host "❌ outlines_core.dll not found!"
+            Get-ChildItem -Recurse target | Select-Object FullName, Length | Sort-Object Length -Descending | Select-Object -First 20
+            exit 1
+          }
+
+          # Create stage/bin and copy DLL
+          $stageBin = "$env:GITHUB_WORKSPACE\stage\${{ env.TRIPLET }}\bin"
+          New-Item -ItemType Directory -Force -Path $stageBin | Out-Null
+          Copy-Item $dllPath $stageBin
+          Write-Host "✅ Copied outlines_core.dll to stage/bin"
 
       - name: Build llama.cpp (${{ matrix.backend }})
         shell: pwsh

@@ -273,50 +273,49 @@ jobs:
         with:
           cuda: '12.4.1'
 
-      - name: Setup MSVC + CMake + Ninja
+      # MSVC + build tools
+      - name: Setup MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
-      - name: Install build tools
-        shell: pwsh
+      - name: Install CMake & Ninja
         run: |
           choco install cmake ninja git -y
           cmake --version
           ninja --version
-          
-      - name: Setup Rust (MSVC)
+
+      # Rust setup
+      - name: Install Rust (MSVC)
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Verify Rust
+      - name: Verify environment
         shell: pwsh
         run: |
-          rustup show
+          Write-Host "PATH:" $env:PATH
+          where cl.exe
+          where cmake
           rustc --version
           cargo --version
 
+      # 🔧 Fix for cmake crate: inherit MSVC env properly
       - name: Build outlines-core (DLL)
-        shell: pwsh
+        shell: cmd
         working-directory: vendors/outlines-core
         run: |
-          # Clean old builds
-          if (Test-Path target) { Remove-Item -Recurse -Force target }
-
-          # Ensure release build directory exists
+          call "%ProgramFiles(x86)%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          set CMAKE_GENERATOR=Ninja
+          set CMAKE_C_COMPILER=cl.exe
+          set CMAKE_CXX_COMPILER=cl.exe
           cargo build --release --target x86_64-pc-windows-msvc
 
-          # Check if DLL exists before copying
-          $dllPath = "target\x86_64-pc-windows-msvc\release\outlines_core.dll"
-          if (-Not (Test-Path $dllPath)) {
-            Write-Host "❌ outlines_core.dll not found!"
-            Get-ChildItem -Recurse target | Select-Object FullName, Length | Sort-Object Length -Descending | Select-Object -First 20
-            exit 1
-          }
+          if not exist target\x86_64-pc-windows-msvc\release\outlines_core.dll (
+            echo ❌ outlines_core.dll not found!
+            dir /s /b target
+            exit /b 1
+          )
 
-          # Create stage/bin and copy DLL
-          $stageBin = "$env:GITHUB_WORKSPACE\stage\${{ env.TRIPLET }}\bin"
-          New-Item -ItemType Directory -Force -Path $stageBin | Out-Null
-          Copy-Item $dllPath $stageBin
-          Write-Host "✅ Copied outlines_core.dll to stage/bin"
+          mkdir "%GITHUB_WORKSPACE%\stage\${{ env.TRIPLET }}\bin"
+          copy target\x86_64-pc-windows-msvc\release\outlines_core.dll "%GITHUB_WORKSPACE%\stage\${{ env.TRIPLET }}\bin\"
 
       - name: Build llama.cpp (${{ matrix.backend }})
         shell: pwsh

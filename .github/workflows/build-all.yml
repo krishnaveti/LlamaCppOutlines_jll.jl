@@ -297,7 +297,6 @@ jobs:
           rustc --version
           cargo --version
 
-      # 🔧 Fix for cmake crate: inherit MSVC env properly
       - name: Build outlines-core (DLL)
         shell: cmd
         working-directory: vendors/outlines-core
@@ -306,6 +305,12 @@ jobs:
           set CMAKE_GENERATOR=Ninja
           set CMAKE_C_COMPILER=cl.exe
           set CMAKE_CXX_COMPILER=cl.exe
+          REM ---- Disable AWS-LC assembly and NASM ----
+          set AWS_LC_SYS_NO_ASM=1
+          set AWS_LC_SYS_NO_JITTER_ENTROPY=1
+          set AWS_LC_SYS_CMAKE_BUILDER=OFF
+          set AWS_LC_SYS_PREBUILT_NASM=1
+          set RUSTFLAGS=-C target-feature=+crt-static
           cargo build --release --target x86_64-pc-windows-msvc
 
           if not exist target\x86_64-pc-windows-msvc\release\outlines_core.dll (
@@ -316,6 +321,7 @@ jobs:
 
           mkdir "%GITHUB_WORKSPACE%\stage\${{ env.TRIPLET }}\bin"
           copy target\x86_64-pc-windows-msvc\release\outlines_core.dll "%GITHUB_WORKSPACE%\stage\${{ env.TRIPLET }}\bin\"
+
 
       - name: Build llama.cpp (${{ matrix.backend }})
         shell: pwsh
